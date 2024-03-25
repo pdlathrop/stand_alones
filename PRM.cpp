@@ -1,3 +1,9 @@
+/* Standalone program to create a 2D obstacle environment, create a probabilistic roadmap (PRM) performing connection tests with straight-line rasterizations, connect an initial and goal node to the PRM, and returning a traversible path via a graph search
+Author: Paul Lathrop
+Date last edited: 3/25/24
+*/
+
+
 #include <cstdlib>
 #include <iostream>
 #include <locale>
@@ -7,6 +13,7 @@
 #include <unordered_map>
 
 struct node{
+  //node class contains x and y coordinates and vector int of indices of nodes that are connected. Works when the tree/graph is not order-changed. Would be more robust to use a unique numbering system separate to index (or other key)
   float x;
   float y;
   std::vector<int> connectionInd;
@@ -21,11 +28,13 @@ struct node{
 };
 
 struct roadmap{
+  //for PRM return, tree and oracleCount being number of connections tested, for comparison purposes. Tree not technically correct term, graph is more appropriate.
   std::vector<node> tree;
   int oracleCount;
 };
 
 struct obstacle{
+  //rectangular obstacles defined by bounds
   float x1;
   float x2;
   float y1; 
@@ -42,6 +51,7 @@ float nodeDist(node node1, node node2){
 }
 
 int findParent(node randNode, std::vector<node> tree, int bound){
+  //returns index of closest parent node in graph to randNode
   float minDist = 2*bound;
   int  chosenParentInd;
   for(int i = 0; i < tree.size(); i++){
@@ -54,6 +64,8 @@ int findParent(node randNode, std::vector<node> tree, int bound){
 }
 
 bool testConnection(node node1, node node2, std::vector<obstacle>& obstacles, int rastNum){
+  //simple connection test based on rasterizing straight line between node1 and node2 (with rastNum equally spread rasterizations), and checking all points for obstacle impact. Not perfect, better (and slower) with higher rastNum. Returns true if obstacle free straight line path exists, false otherwise.
+
   //create rasterizations 
   float xRange = node2.x - node1.x;
   float yRange = node2.y - node1.y;
@@ -69,6 +81,7 @@ bool testConnection(node node1, node node2, std::vector<obstacle>& obstacles, in
 }
 
 bool testNode(node testNode,std::vector<obstacle>& obstacles){
+  //boolean test of whether testNode is within an obstacle
   //returns true if free, false if not
   for(int j = 0; j < obstacles.size(); j++){
     if(testNode.x >= obstacles[j].x1 && testNode.x <= obstacles[j].x2 && testNode.y >= obstacles[j].y1 && testNode.y <= obstacles[j].y2){
@@ -79,6 +92,9 @@ bool testNode(node testNode,std::vector<obstacle>& obstacles){
 }
 
 void populateStartEndNodes(node& startNode, node& endNode, std::vector<obstacle>& obstacles, float bound){
+  //method to edit startNode and endNode such that they are both outside of obstacles
+  //float bound is size of environment (assumed square)
+  //no return as nodes are edited by reference
   bool validStart = false;
   while(!validStart){
     node randNode{randFloat()*bound,randFloat()*bound};
@@ -87,7 +103,6 @@ void populateStartEndNodes(node& startNode, node& endNode, std::vector<obstacle>
       validStart = true;
     }
   }
-
   bool validEnd = false;
   while(!validEnd){
     node randNode{randFloat()*bound,randFloat()*bound};
@@ -100,6 +115,7 @@ void populateStartEndNodes(node& startNode, node& endNode, std::vector<obstacle>
 }
 
 std::vector<obstacle> createObstacles(int numObs, float minSide, float maxSide, int bound){
+  //create a numObs-long random obstacle list defining rectangular obstacles of minimum side length minSide and max length maxSide
   std::vector<obstacle> obstacles;
   float obsDiff = maxSide - minSide;
   for(int i = 0; i < numObs; i++){
@@ -112,6 +128,19 @@ std::vector<obstacle> createObstacles(int numObs, float minSide, float maxSide, 
 }
 
 roadmap createPRM(std::vector<obstacle>& obstacles, int numNodes, float bound, float connecThreshold, int rastNum){
+  /*
+  Method to create a roadmap of size numNodes within 2D obstacle environment as defined by obstacles
+  Inputs:
+  std::vector<obstacle>& obstacles: list of rectangular obstacles (obstacle objects) by reference
+  int numNodes: number of nodes in graph to return
+  float bound: side length of square environment (width and height equal)
+  float connecThreshold: when a random node is drawn, attempts are made to connect all existing nodes within a distance connecThreshold
+  int rastNum: number of equally spaced rasterizations to check between a node and a possible parent node, when testing connection feasibility within obstacle environment
+  Return:
+  roadmap object with fields
+  std::vector<node> tree: list of nodes and their connections (by index)
+  oracleCount: number of total connection tests tried (for comparison purposes)
+  */
   int nodeCount = 0;
   int oracleCount = 0; 
   std::vector<node> tree;
@@ -126,7 +155,7 @@ roadmap createPRM(std::vector<obstacle>& obstacles, int numNodes, float bound, f
        nodeCount++;
     }
   }
-
+  //add nodes until reached desired size
   while(nodeCount < numNodes){
     node randNode{randFloat()*bound,randFloat()*bound};
     std::vector<int> closeNodeInd;
@@ -151,7 +180,21 @@ roadmap createPRM(std::vector<obstacle>& obstacles, int numNodes, float bound, f
 }
 
 int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node goalNode, float connecThreshold, int rastNum){
-    //find close enough nodes
+  /*
+  Method to add start and goal nodes to an existing PRM within an obstacle environment
+  Inputs:
+  roadmap& PRM: existing roadmap by reference
+  std::vector<obstacle>& obstacles: list of rectangular obstacles (obstacle objects) by reference
+  node startNode: start node to add to the PRM
+  node goalNode: goal node to add to the PRM
+  float connecThreshold: attempts are made to connect all existing nodes within a distance connecThreshold to start and goal nodes
+  int rastNum: number of equally spaced rasterizations to check between a node and a possible parent node, when testing connection feasibility within obstacle environment
+  Return:
+  PRM edited by reference
+  int is 0 for when neither start nor goal can be connected, 1 for when one only was connected, and 2 for when both are. PRM is edited by reference when int is 1 or 2.
+  */
+
+  //find close enough nodes
   std::vector<int> closeNodeIndStart;
   std::vector<int> closeNodeIndGoal;
   for(int i = 0; i < PRM.tree.size(); i++){
@@ -165,13 +208,13 @@ int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node 
   for(int i = 0; i < closeNodeIndStart.size(); i++){
     PRM.oracleCount++;
     if(testConnection(startNode, PRM.tree[closeNodeIndStart[i]], obstacles, rastNum)){
-      startNode.connectionInd.push_back(closeNodeIndStart[i]); //not marking node connections yet
+      startNode.connectionInd.push_back(closeNodeIndStart[i]); //not marking node connections yet within PRM
     }
   }
   for(int i = 0; i < closeNodeIndGoal.size(); i++){
     PRM.oracleCount++;
     if(testConnection(goalNode, PRM.tree[closeNodeIndGoal[i]], obstacles, rastNum)){
-      goalNode.connectionInd.push_back(closeNodeIndGoal[i]); //not marking node connections yet
+      goalNode.connectionInd.push_back(closeNodeIndGoal[i]); //not marking node connections yet within PRM
     }
   }
 
@@ -206,6 +249,17 @@ int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node 
 }
 
 std::vector<node> searchPRM(roadmap& PRM, int startInd, int goalInd, int rastNum){
+  /*
+  Method to search via DFS (stack) an existing PRM for a path between index startInd and index goalInd. Path of nodes is returned.
+  Inputs:
+  roadmap& PRM: existing roadmap passed by reference
+  int startInd: index of start node within PRM
+  int goalInd: index of goal node within PRM
+  int rastNum: number of equally spaced rasterizations to check between a node and a possible parent node, when testing connection feasibility within obstacle environment
+  Returns:
+  std::vector<node> : with path of nodes (in reverse order) from start index to goal index (including both start and goal nodes)
+  */
+
   //init a search, also create an unordered map of parents to return path
   std::unordered_map<int,int> parentMap;
   std::stack<int> searchList;
@@ -213,7 +267,7 @@ std::vector<node> searchPRM(roadmap& PRM, int startInd, int goalInd, int rastNum
   searchList.push(startInd);//push start node
   while(!searchList.empty()){
     int indexTemp = searchList.top(); 
-    //std::cout << "index of current check: " << indexTemp << std::endl;
+    //std::cout << "index of current check: " << indexTemp << std::endl; //debug line
     searchList.pop();
     visited[indexTemp] = 1;
     if(indexTemp == goalInd){ //if its the index of goal, quit loop
@@ -229,7 +283,8 @@ std::vector<node> searchPRM(roadmap& PRM, int startInd, int goalInd, int rastNum
       }
     }
   }
-  //now unwrap and return path
+
+  //unwrap and return path
   std::vector<node> returnPath;
   int tempInd = goalInd; //goal ind is the start
   returnPath.push_back(PRM.tree[tempInd]);
@@ -241,6 +296,7 @@ std::vector<node> searchPRM(roadmap& PRM, int startInd, int goalInd, int rastNum
 }
 
 void printPath(std::vector<node>& path){
+  //method to print x and y values of all nodes in path 
   for(int i = 0; i < path.size(); i++){
     std::cout << "[" << path[i].x << "," << path[i].y << "]" << std::endl;
   }
