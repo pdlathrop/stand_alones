@@ -75,6 +75,7 @@ bool testConnection(node node1, node node2, std::vector<obstacle>& obstacles, in
 }
 
 std::vector<obstacle> createObstacles(int numObs, float minSide, float maxSide, int bound){
+  //create a numObs-long random obstacle list defining rectangular obstacles of minimum side length minSide and max length maxSide
   std::vector<obstacle> obstacles;
   float obsDiff = maxSide - minSide;
   for(int i = 0; i < numObs; i++){
@@ -87,6 +88,7 @@ std::vector<obstacle> createObstacles(int numObs, float minSide, float maxSide, 
 }
 
 std::vector<node> unwrap(searchResult lastRun, int goalNodeIndex){
+  //takes in searchResult object with tree field, traces back via parents from 0 indexed start to index goalNodeIndex and returns reverse order path of nodes as a list
   //assuming index 0 is the start. returns vector of nodes, 0 index is goal, last index is start (reverse order)
   std::vector<node> returnList;
   bool reachedStart = false;
@@ -104,6 +106,7 @@ std::vector<node> unwrap(searchResult lastRun, int goalNodeIndex){
 }
 
 std::vector<node> unwrap(searchResult lastRun, int startNodeIndex, int goalNodeIndex){
+  //takes in searchResult object with tree field, traces back via parents from startNodeIndex start to index goalNodeIndex and returns reverse order path of nodes as a list
   //for when 0 index is not the start. returns vector of nodes, 0 index is goal, last index is start (reverse order)
   std::vector<node> returnList;
   bool reachedStart = false;
@@ -120,6 +123,8 @@ std::vector<node> unwrap(searchResult lastRun, int startNodeIndex, int goalNodeI
 }
 
 searchResult RRT(std::vector<obstacle>& obstacles, node xInit, node xGoal, float goalRad, int rastNum, int bound){
+  //performs Rapidly-Exploring Random Tree search of bound*bound 2D space with obstacles defined in obstacles, initial node xInit, goal node xGoal, a radius of acceptible solution around goal goalRad
+  //returns searchResult object made of tree and number of times connections are tested (oracleCount). A node within goalRad of xGoal is last element of tree.
   bool finished = false;
   std::vector<node> tree;
   xInit.parentInd = 0;
