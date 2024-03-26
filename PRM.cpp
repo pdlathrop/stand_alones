@@ -191,7 +191,7 @@ int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node 
   int rastNum: number of equally spaced rasterizations to check between a node and a possible parent node, when testing connection feasibility within obstacle environment
   Return:
   PRM edited by reference
-  int is 0 for when neither start nor goal can be connected, 1 for when one only was connected, and 2 for when both are. PRM is edited by reference when int is 1 or 2.
+  int is 0 for when neither start nor goal can be connected, 1 for when only start connected, -1 for when only end connected, and 2 for when both are. PRM is edited by reference when int is 1 or 2.
   */
 
   //find close enough nodes
@@ -231,7 +231,7 @@ int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node 
     for(int i = 0; i < goalNode.connectionInd.size(); i++){
       PRM.tree[goalNode.connectionInd[i]].connectionInd.push_back(PRM.tree.size() - 1); //goal node's index is size - 1
     }
-    return 1; 
+    return -1; 
   }
   if(goalNode.connectionInd.empty() && startNode.connectionInd.empty()){
     return 0; 
@@ -246,6 +246,62 @@ int addPRM(roadmap& PRM, std::vector<obstacle>& obstacles, node startNode, node 
     PRM.tree[goalNode.connectionInd[i]].connectionInd.push_back(PRM.tree.size() - 1); //goal node's index is size - 1
   }
   return 2;
+}
+
+int forceExpand(roadmap& PRM, node addNode, std::vector<obstacle>& obstacles, int rastNum, int connectAttempts, float bound, float connecThreshold){
+  /*
+  Method forces PRM expansion toward and around addNode in an attempt to connect it with the existing PRM (for use if addPRM returns -1, 1, and 0). Returns 1 when addNode successfully added, 0 if not
+  */
+  int attempts = 0;
+  int batchsize = 10;
+  bool connected = false;
+  while(!connected || attempts != connectAttempts){//until we connect or timeout
+    for(int i = 0; i < batchsize; i++){ //connect 10 new nodes to the PRM in direction of the new node
+      bool make1Connection = false;
+      while(!make1Connection){
+        node randNode;
+        if(i % 2 == 0){
+          node randNode{randFloat()*bound,randFloat()*bound}; //true random node
+        }else{
+          node randNode{addNode.x + (1-2*randFloat()), addNode.y + (1-2*randFloat())}; //else direct rand node to be near addNode
+        }
+        connectAttempts++; //iterate this here, will overflow by the time mother while is reached
+
+        std::vector<int> closeNodeInd;
+        for(int i = 0; i < PRM.tree.size(); i++){ //find nodes that are close enough
+          if(nodeDist(randNode,PRM.tree[i]) <= connecThreshold){
+            closeNodeInd.push_back(i);
+          }
+        }
+        for(int i = 0; i < closeNodeInd.size(); i++){ //for close enough nodes
+          if(testConnection(randNode,PRM.tree[closeNodeInd[i]],obstacles,rastNum)){
+            randNode.connectionInd.push_back(closeNodeInd[i]); //mark connection in randnode
+            PRM.tree[closeNodeInd[i]].connectionInd.push_back(PRM.tree.size()); //also mark connection in node, index will be current size - 1 + 1 (due to 0-index)
+          }
+        }
+        if(!randNode.connectionInd.empty()){ //if some connections
+          PRM.tree.push_back(randNode);
+          make1Connection = true; //to escape most recent while
+        }
+      }
+      //for loop will time out if connections are made
+    }
+    //every 10 connections to PRM, attempt to connect to addNode via new connections
+    for(int i = 0; i < batchsize; i++){
+      if(testConnection(addNode, PRM.tree[PRM.tree.size()-1-i], obstacles, rastNum)){
+        addNode.connectionInd.push_back(PRM.tree.size()-1-i); //this will iterate the last batchsize elements, backwards
+        PRM.tree[PRM.tree.size()-1-i].connectionInd.push_back(PRM.tree.size()-1); //it will be last element
+      }
+    }
+    if(!addNode.connectionInd.empty()){
+      PRM.tree.push_back(addNode);
+      connected = true; //we did it!
+    }
+  }
+  if(connected){
+    return 1;
+  }
+  return 0;
 }
 
 std::vector<node> searchPRM(roadmap& PRM, int startInd, int goalInd, int rastNum){
@@ -318,10 +374,22 @@ int main() {
   std::cout << "endNode: [" << endNode.x << "," << endNode.y << "]" << std::endl;
 
   int addReturn = addPRM(createdPRM, obstacles,  startNode, endNode, 3, rastNum);
-  if(addReturn == 2){
-     std::vector<node> returnPath = searchPRM(createdPRM, createdPRM.tree.size()-2,  createdPRM.tree.size()-1, rastNum);
+  int success = 1;
+  if(addReturn == -1){
+    success = forceExpand(createdPRM, startNode, obstacles, rastNum, 250, bound, 2.5);
+  }else if(addReturn == 1){
+    success = forceExpand(createdPRM, endNode, obstacles, rastNum, 250, bound, 2.5);
+  }else if(addReturn == 0){
+    success = forceExpand(createdPRM, startNode, obstacles, rastNum, 250, bound, 2.5);
+    success = forceExpand(createdPRM, endNode, obstacles, rastNum, 250, bound, 2.5);
+  }
+
+  if(success){
+    std::vector<node> returnPath = searchPRM(createdPRM, createdPRM.tree.size()-2,  createdPRM.tree.size()-1, rastNum);
     std::cout << returnPath.size() << std::endl;
     printPath(returnPath);
   }
+  
+
   return 0;
 }
